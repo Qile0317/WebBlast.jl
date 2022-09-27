@@ -116,7 +116,9 @@ NOTE: This relies on querying a public web service, using an API that they list 
 
 WHAT YOU PUT IN:
 
-query must be either a String, or an array of String (if searching multiple sequences). These are expected to be nucleotides, or amino acids, but we aren't bothering with specific types for these. Just make sure they match the database and program.
+query can be a single String(of nucleotides or protein), a single DNA biosequence, or a FASTA record, or an array of String or DNA biosequence(if searching multiple sequences). 
+
+These are expected to be nucleotides, or amino acids, but we aren't bothering with specific types for these. Just make sure they match the database and program.
 
 query_names must be nothing (default), in which case your queries will be submitted as query_1, query_2 etc, or a vector of String with as many names as there are queries.
 
@@ -152,11 +154,23 @@ function WebBLAST(query;
         num_hits = 100,
         database = "nt",
         program = "blastn",
-        verbosity = 1, 
+        verbosity = 1,
         option_string = "",
         save_XML_path = nothing,
         blast_URL = "https://blast.ncbi.nlm.nih.gov/Blast.cgi?")
     #This could be done with dispatch, but then I'd have to have all the options repeated.
+    #conversion from biosequence to string
+    if typeof(query) == LongSequence{DNAAlphabet{4}}
+        query = string(query)
+    elseif typeof(query) == Vector{LongSequence{DNAAlphabet{4}}}
+        query = [string(i) for i in query]
+    elseif typeof(query) == FASTX.FASTA.Record
+        if isnothing(query_names)
+            query_names = FASTX.FASTA.identifier(query)
+        end
+        query = string(FASTX.FASTA.sequence(query))
+    end
+    #BLAST
     if typeof(query) == Vector{String}
         q = ""
         manufacture_names = false
@@ -179,11 +193,11 @@ function WebBLAST(query;
         @error "query must either be a String or a vector of Strings"
     end
     #Unclear that the "XML" FORMAT_TYPE is working. But no worries for now.
-    qstr = "CMD=Put&QUERY="*q*"&PROGRAM=$(program)&DATABASE=$(database)&FORMAT_TYPE=XML&HITLIST_SIZE=$(num_hits)"*option_string;    
+    qstr = "CMD=Put&QUERY="*q*"&PROGRAM=$(program)&DATABASE=$(database)&FORMAT_TYPE=XML&HITLIST_SIZE=$(num_hits)"*option_string;
     resp = HTTP.request("POST", blast_URL,
              ["Content-Type" => "application/x-www-form-urlencoded"],
              qstr);
-    
+
     #resp = HTTP.post(blast_URL*qstr);
     respstr = String(HTTP.body(resp));
     RID = ""
@@ -200,7 +214,7 @@ function WebBLAST(query;
     http_str = blast_URL*"CMD=Get&FORMAT_OBJECT=SearchInfo&RID=$(RID)"
     getresp = HTTP.get(http_str);
     getstr = String(HTTP.body(getresp));
-    
+
     #loop that waits for BLAST to finish
     waits = 1
     while occursin("Status=WAITING",getstr) && waits < max_waits
@@ -210,7 +224,7 @@ function WebBLAST(query;
         getstr = String(HTTP.body(getresp))
         waits += 1
     end
-    
+
     if occursin("Status=READY",getstr) && occursin("ThereAreHits=yes",getstr)
         verbosity > 0 && println("Retrieving hits.")
         xmlblast = HTTP.get(blast_URL*"CMD=Get&FORMAT_TYPE=XML&RID=$(RID)")
@@ -232,3 +246,4 @@ function WebBLAST(query;
         end
     end
 end
+
