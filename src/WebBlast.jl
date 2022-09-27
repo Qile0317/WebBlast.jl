@@ -9,6 +9,6 @@
 #Also, now the name WebBLAST is taken. Should I still call the package WebBlast.jl? Ja, why not.
 
 module WebBlast
-    using HTTP, EzXML, DataFrames
+    using HTTP, EzXML, DataFrames, FASTX, BioSequences
     include("functions.jl")
 end
